@@ -1,0 +1,30 @@
+repos:
+  - repo: local
+    hooks:
+      - id: check-uv-lock-sources
+        name: Check uv.lock sources
+        entry: python scripts/check_uv_lock_sources.py
+        language: python
+        files: (^|/)uv\.lock$
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.4 # keep in sync with pyproject.toml
+    hooks:
+      - id: ruff
+        name: Run linter
+      - id: ruff-format
+        name: Run formatter
+        args: ["--check"]
+  - repo: local
+    hooks:
+      - id: reuse-license-headers
+        name: Annotate SPDX license headers with reuse
+        entry: reuse
+        language: python
+        additional_dependencies:
+          - reuse
+        args:
+          - annotate
+          - --skip-existing
+          - --copyright=Bentley Systems, Incorporated
+          - --license=Apache-2.0
+        types: [python]

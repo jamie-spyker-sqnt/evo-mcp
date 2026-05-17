@@ -8,9 +8,10 @@ including workspace management, object ops, and data transfer.
 
 Configuration:
     Set MCP_TOOL_FILTER environment variable to filter tools and prompts:
-    - "admin" : Workspace management tools 
-    - "data"  : Object query, file operations, and management tools
-    - "all"   : All tools (default)
+    - "admin"   : Workspace management tools
+    - "data"    : Object query, file operations, and management tools
+    - "compute" : Compute and geostatistics tools
+    - "all"     : All tools (default)
 
     Set MCP_TRANSPORT environment variable to choose transport mode:
     - "stdio" (default): Standard input/output, used by VS Code, Cursor, Claude Desktop
@@ -20,25 +21,36 @@ Configuration:
     - MCP_HTTP_HOST: Host to bind to (default: localhost)
     - MCP_HTTP_PORT: Port to listen on (default: 5000)
 
-The environment variables can be set in a .env file or 
+The environment variables can be set in a .env file or
 passed directly to the MCP server as input parameters.
 """
 
-import os
 import logging
+import os
 from pathlib import Path
+
 from fastmcp import FastMCP
 from fastmcp.utilities.logging import configure_logging
 
+from evo_mcp.session import object_registry
+from evo_mcp.staging import runtime as staging_runtime
+from evo_mcp.staging.service import staging_service
 from evo_mcp.tools import (
     register_admin_tools,
-    # register_data_tools,
-    register_general_tools,
-    register_filesystem_tools,
-    register_object_builder_tools,
+    register_compute_tools,
     register_file_tools,
-    register_instance_users_admin_tools
+    register_filesystem_tools,
+    register_general_tools,
+    register_instance_users_admin_tools,
+    register_object_builder_tools,
+    register_object_staging_tools,
 )
+
+staging_runtime.configure(object_registry, staging_service)
+
+
+logger = logging.getLogger(__name__)
+OBJECTS_REFERENCE_UNAVAILABLE = "Objects reference information is currently unavailable."
 
 # Get transport mode from environment variable
 TRANSPORT = os.getenv("MCP_TRANSPORT", "stdio").lower()
@@ -55,12 +67,14 @@ if TRANSPORT == "http":
 
 # Get agent type from environment variable
 # This can either be set via MCP inputs, or the .env file used by the agent example
-TOOL_FILTER = os.getenv("MCP_TOOL_FILTER",
+TOOL_FILTER = os.getenv(
+    "MCP_TOOL_FILTER",
     os.getenv(
         "MCP_AGENT_TYPE",  # Kept for backwards compatibility
         "all",
-    )).lower()
-VALID_TOOL_FILTERS = ["admin", "data", "all"]
+    ),
+).lower()
+VALID_TOOL_FILTERS = ["admin", "data", "compute", "all"]
 
 if TOOL_FILTER not in VALID_TOOL_FILTERS:
     logging.warning("Invalid MCP_TOOL_FILTER '%s', defaulting to 'all'", TOOL_FILTER)
@@ -70,9 +84,11 @@ if TOOL_FILTER not in VALID_TOOL_FILTERS:
 server_name = "Evo MCP Server" if TOOL_FILTER == "all" else f"Evo MCP Server ({TOOL_FILTER})"
 mcp = FastMCP(server_name)
 
+
 # Show more traceback frame for now, we may want to disabled the rich
 # traceback formatting entirely too.
 configure_logging(tracebacks_max_frames=20)
+
 
 def _get_objects_reference_content() -> str:
     """Load the objects reference content from a markdown file."""
@@ -81,8 +97,8 @@ def _get_objects_reference_content() -> str:
         with open(reference_path, "r", encoding="utf-8") as f:
             return f.read()
     except FileNotFoundError:
-        logging.error("Objects reference file not found at %s", reference_path)
-        return "Objects reference information is currently unavailable."
+        logging.error("Reference file not found at %s", reference_path)
+        return OBJECTS_REFERENCE_UNAVAILABLE
 
 
 # =============================================================================
@@ -97,7 +113,7 @@ if TOOL_FILTER in ["all", "admin"]:
     # Includes: workspace creation, snapshots, duplication, permissions management
     register_admin_tools(mcp)
     register_instance_users_admin_tools(mcp)
-if TOOL_FILTER in ["all", "data"]: #  "data_agent"
+if TOOL_FILTER in ["all", "data"]:  #  "data_agent"
     # register_data_tools(mcp)
     register_filesystem_tools(mcp)
     register_object_builder_tools(mcp)
@@ -107,15 +123,24 @@ if TOOL_FILTER in ["all", "data"]: #  "data_agent"
     else:
         print("Evo MCP Server configured - Data tools enabled")
 
+if TOOL_FILTER in ["all", "compute"]:
+    register_compute_tools(mcp)
+    register_object_staging_tools(mcp)
+    if TOOL_FILTER == "compute":
+        print("Evo MCP Server configured for Compute Agent")
+    else:
+        print("Evo MCP Server configured - Compute tools enabled")
+
 # =============================================================================
 # Resources (not currently supported in ADK)
 # =============================================================================
+
 
 @mcp.resource("evo://objects/schema-reference")
 def get_objects_reference() -> str:
     """
     Comprehensive technical reference for Evo Geoscience Objects (GOs).
-    
+
     Provides detailed schema information for all available geoscience object types,
     including required and optional parameters for each object type.
     """
@@ -128,6 +153,7 @@ def get_objects_reference() -> str:
 
 if TOOL_FILTER == "all":
     print("Registering prompt for all tool types.")
+
     @mcp.prompt(name="all_prompt")
     def all_prompt() -> str:
         """All prompt that encompasses the functionality of all tool without a filter applied."""
@@ -161,7 +187,6 @@ if TOOL_FILTER == "all":
 
         When working with objects, always verify workspace_id and object_id.
         Use the Object Information reference below to understand object schemas and required properties.
-
         Use the powerful bulk operation capabilities carefully. Always confirm the scope of operations with users.
         Available tools:
 
@@ -176,6 +201,7 @@ if TOOL_FILTER == "all":
 
 # Register prompts based on agent type
 if TOOL_FILTER in ["all", "admin"]:
+
     @mcp.prompt(name="admin_prompt")
     def admin_prompt() -> str:
         """Prompt for management operations."""
@@ -200,6 +226,7 @@ if TOOL_FILTER in ["all", "admin"]:
 
 
 if TOOL_FILTER in ["all", "data"]:
+
     @mcp.prompt(name="data_prompt")
     def data_prompt() -> str:
         """Prompt for local file system data connector and object creation operations."""
@@ -305,7 +332,28 @@ if TOOL_FILTER in ["all", "data"]:
 
         If an error occurs when calling a tool, return the full error message.
         """
-    
+
+
+if TOOL_FILTER in ["all", "compute"]:
+
+    @mcp.prompt(name="compute_prompt")
+    def compute_prompt() -> str:
+        """Prompt for geostatistics and compute operations."""
+        return """\
+        You are a compute assistant for the Evo platform created by Seequent.
+
+        You can help users with:
+        - Setting the active workspace for compute workflows
+        - Discovering source and target objects for compute tasks
+        - Building variograms and search neighborhoods
+        - Running kriging workflows and scenario comparisons
+        - Retrieving and summarizing output attributes
+
+        Always confirm workspace context before running compute operations.
+        Validate object IDs and attribute names before execution.
+        If an error occurs when calling a tool, return the full error message.
+        """
+
 
 # Note: Evo context initialization happens lazily on first tool call
 # via ensure_initialized() because OAuth requires browser interaction

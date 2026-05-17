@@ -6,41 +6,43 @@
 MCP tools for general operations (health checks, object CRUD, etc).
 """
 
+import asyncio
 import logging
 from uuid import UUID
 
+from evo.objects.typed import object_from_uuid
+from evo.widgets import get_portal_url, get_viewer_url
 from fastmcp import Context
 
-from evo_mcp.context import evo_context, ensure_initialized
+from evo_mcp.context import ensure_initialized, evo_context
+from evo_mcp.utils.tool_support import get_workspace_context, get_workspace_environment, schema_label
 
 # Set up logging to file for debugging
 logging.basicConfig(
-    filename='mcp_tools_debug.log',
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    filename="mcp_tools_debug.log", level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
 def register_general_tools(mcp):
     """Register all general tools with the FastMCP server."""
-    
+
     @mcp.tool()
     async def workspace_health_check(workspace_id: str = "") -> dict:
         """Check health status of Evo services.
-        
+
         Args:
             workspace_id: Workspace UUID to check object service (optional)
         """
         results = {}
-        
+
         if evo_context.workspace_client:
             workspace_health = await evo_context.workspace_client.get_service_health()
             results["workspace_service"] = {
                 "service": workspace_health.service,
                 "status": workspace_health.status,
             }
-        
+
         if workspace_id:
             await ensure_initialized()
             object_client = await evo_context.get_object_client(UUID(workspace_id))
@@ -49,30 +51,24 @@ def register_general_tools(mcp):
                 "service": object_health.service,
                 "status": object_health.status,
             }
-        
+
         return results
 
     @mcp.tool()
-    async def list_workspaces(
-        name: str = "",
-        deleted: bool = False,
-        limit: int = 50
-    ) -> list[dict]:
+    async def list_workspaces(name: str = "", deleted: bool = False, limit: int = 50) -> list[dict]:
         """List workspaces with optional filtering by name or deleted status.
-        
+
         Args:
             name: Filter by workspace name (leave empty for no filter)
             deleted: Include deleted workspaces
             limit: Maximum number of results
         """
         await ensure_initialized()
-        
+
         workspaces = await evo_context.workspace_client.list_workspaces(
-            name=name if name else None,
-            deleted=deleted,
-            limit=limit
+            name=name if name else None, deleted=deleted, limit=limit
         )
-        
+
         return [
             {
                 "id": str(ws.id),
@@ -86,18 +82,15 @@ def register_general_tools(mcp):
         ]
 
     @mcp.tool()
-    async def get_workspace(
-        workspace_id: str = "",
-        workspace_name: str = ""
-    ) -> dict:
+    async def get_workspace(workspace_id: str = "", workspace_name: str = "") -> dict:
         """Get workspace details by ID or name.
-        
+
         Args:
             workspace_id: Workspace UUID (provide either this or workspace_name)
             workspace_name: Workspace name (provide either this or workspace_id)
         """
         await ensure_initialized()
-        
+
         if workspace_id:
             workspace = await evo_context.workspace_client.get_workspace(UUID(workspace_id))
         elif workspace_name:
@@ -108,7 +101,7 @@ def register_general_tools(mcp):
             workspace = matching[0]
         else:
             raise ValueError("Either workspace_id or workspace_name must be provided")
-        
+
         return {
             "id": str(workspace.id),
             "name": workspace.display_name,
@@ -120,16 +113,13 @@ def register_general_tools(mcp):
             "default_coordinate_system": workspace.default_coordinate_system,
             "labels": workspace.labels,
         }
-    
+
     @mcp.tool()
     async def list_objects(
-        workspace_id: str,
-        schema_id: str = "",
-        deleted: bool = False,
-        limit: int = 100
+        workspace_id: str, schema_id: str = "", deleted: bool = False, limit: int = 100
     ) -> list[dict]:
         """List objects in a workspace with optional filtering.
-        
+
         Args:
             workspace_id: Workspace UUID
             schema_id: Filter by schema/object type (leave empty for no filter)
@@ -137,29 +127,29 @@ def register_general_tools(mcp):
             limit: Maximum number of results
         """
         logger.info(f"evo_list_objects called with workspace_id={workspace_id}, schema_id={schema_id}")
-        
+
         try:
             logger.debug("Calling ensure_initialized()")
             await ensure_initialized()
             logger.debug("ensure_initialized() completed successfully")
-            
+
             logger.debug(f"Getting object client for workspace {workspace_id}")
             object_client = await evo_context.get_object_client(UUID(workspace_id))
             logger.debug(f"Got object_client: {object_client}")
-            
+
             service_health = await object_client.get_service_health()
             service_health.raise_for_status()
             logger.debug("Object client health check passed")
-            
+
             logger.debug("Calling list_objects()")
             objects = await object_client.list_objects(
-                schema_id=None, # [schema_id] if schema_id else None,
+                schema_id=None,  # [schema_id] if schema_id else None,
                 deleted=deleted,
-                limit=limit
+                limit=limit,
             )
 
             logger.debug(f"list_objects() returned {len(objects.items())} objects")
-            
+
             result = [
                 {
                     "id": str(obj.id),
@@ -171,26 +161,21 @@ def register_general_tools(mcp):
                     "created_by": obj.created_by,
                     "modified_at": obj.modified_at,
                     "modified_by": obj.modified_by,
-                    "stage": obj.stage
+                    "stage": obj.stage,
                 }
                 for obj in objects.items()
             ]
             logger.info(f"evo_list_objects completed successfully with {len(result)} objects")
             return result
-            
+
         except Exception as e:
             logger.error(f"Error in evo_list_objects: {type(e).__name__}: {str(e)}", exc_info=True)
             raise
 
     @mcp.tool()
-    async def get_object(
-        workspace_id: str,
-        object_id: str = "",
-        object_path: str = "",
-        version: str = ""
-    ) -> dict:
+    async def get_object(workspace_id: str, object_id: str = "", object_path: str = "", version: str = "") -> dict:
         """Get object metadata by ID or path.
-        
+
         Args:
             workspace_id: Workspace UUID
             object_id: Object UUID (provide either this or object_path)
@@ -199,14 +184,14 @@ def register_general_tools(mcp):
         """
         await ensure_initialized()
         object_client = await evo_context.get_object_client(UUID(workspace_id))
-        
+
         if object_id:
             obj = await object_client.download_object_by_id(UUID(object_id), version=version)
         elif object_path:
             obj = await object_client.download_object_by_path(object_path, version=version)
         else:
             raise ValueError("Either object_id or object_path must be provided")
-        
+
         return {
             "id": str(obj.metadata.id),
             "name": obj.metadata.name,
@@ -219,7 +204,6 @@ def register_general_tools(mcp):
             "modified_by": obj.metadata.modified_by,
             "stage": obj.metadata.stage,
         }
-
 
     @mcp.tool()
     async def list_my_instances(
@@ -261,3 +245,50 @@ def register_general_tools(mcp):
             f"No instance found for parameters {instance_id=} {instance_name=}. "
             "Check that the arguments match an instance returned by `list_my_instances`."
         )
+
+    @mcp.tool()
+    async def viewer_generate_multi_object_links(
+        workspace_id: str,
+        object_ids: list[str],
+    ) -> dict:
+        """Generate portal and viewer links for an explicit user-supplied object list."""
+        if len(object_ids) == 0:
+            raise ValueError("object_ids must contain at least one object ID.")
+
+        context = await get_workspace_context(workspace_id)
+        environment = await get_workspace_environment(workspace_id)
+        unique_requested_ids = list(dict.fromkeys(object_ids))
+        try:
+            resolved_objects = await asyncio.gather(
+                *(object_from_uuid(context, object_id) for object_id in unique_requested_ids)
+            )
+        except Exception as exc:
+            raise ValueError(f"Could not resolve one or more object IDs for viewer-link generation: {exc}") from exc
+
+        unique_ids = list(dict.fromkeys(str(obj.metadata.id) for obj in resolved_objects))
+        viewer_url = get_viewer_url(
+            org_id=str(environment.org_id),
+            workspace_id=str(environment.workspace_id),
+            object_ids=unique_ids,
+            hub_url=environment.hub_url,
+        )
+
+        return {
+            "status": "success",
+            "viewer_url": viewer_url,
+            "object_count": len(unique_ids),
+            "objects": [
+                {
+                    "id": str(obj.metadata.id),
+                    "name": getattr(obj, "name", str(obj.metadata.id)),
+                    "schema_id": schema_label(obj),
+                    "portal_url": get_portal_url(
+                        org_id=str(environment.org_id),
+                        workspace_id=str(environment.workspace_id),
+                        object_id=str(obj.metadata.id),
+                        hub_url=environment.hub_url,
+                    ),
+                }
+                for obj in resolved_objects
+            ],
+        }
