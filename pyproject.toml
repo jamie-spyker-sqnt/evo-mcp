@@ -3,7 +3,7 @@ name = "evo-mcp"
 version = "0.1.0"
 description = "An MCP server implementation using Evo SDK"
 license = "Apache-2.0"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "fastmcp>=3.2.4",
     "google-adk==1.28.1",
@@ -13,6 +13,7 @@ dependencies = [
     "evo-sdk-common>=0.5.21",
     "evo-schemas>=2025.9.2",
     "evo-widgets>=0.2.0",
+    "evo-lineage-client>=1.0.0",
     "aiohttp>=3.14.0",
     "aiohttp>=3.14.0",
     "pyarrow>=14.0.0",
@@ -39,3 +40,6 @@ extend-select = ["I", "RUF022"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["evo_mcp"]
+
+[[tool.uv.index]]
+url = "https://seequent.jfrog.io/artifactory/api/pypi/evo-pypi-virtual/simple"
