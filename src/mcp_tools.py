@@ -41,6 +41,7 @@ from evo_mcp.tools import (
     register_filesystem_tools,
     register_general_tools,
     register_instance_users_admin_tools,
+    register_lineage_tools,
     register_object_builder_tools,
     register_object_staging_tools,
 )
@@ -132,6 +133,9 @@ def _get_objects_reference_content() -> str:
 
 # Always register general tools (workspace discovery, object queries, etc.)
 register_general_tools(mcp)
+
+# Always register lineage tools (dataset/run provenance discovery)
+register_lineage_tools(mcp)
 
 if TOOL_FILTER in ["all", "admin"]:
     # Admin Agent: Workspace and instance management tools
