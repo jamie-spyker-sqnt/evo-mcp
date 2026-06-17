@@ -104,8 +104,8 @@ def register_lineage_tools(mcp):
     async def get_dataset_lineage_graph(
         dataset_name: str,
         dataset_namespace: str,
-        forward_depth: int | None = None,
-        backward_depth: int | None = None,
+        forward_depth: int | None = 3,
+        backward_depth: int | None = 3,
     ) -> dict:
         """Retrieve the lineage graph for a dataset.
 
@@ -116,8 +116,9 @@ def register_lineage_tools(mcp):
             dataset_name: Name of the dataset (see build_lineage_dataset_name).
             dataset_namespace: Namespace of the dataset (see
                 build_lineage_dataset_namespace).
-            forward_depth: Optional forward traversal depth (downstream).
-            backward_depth: Optional backward traversal depth (upstream).
+            forward_depth: Forward traversal depth (downstream). Defaults to 3.
+            backward_depth: Backward traversal depth (upstream). Defaults to 3.
+                At least one depth parameter must be specified (non-None).
 
         Returns:
             The lineage graph response.
@@ -184,15 +185,16 @@ def register_lineage_tools(mcp):
     @mcp.tool()
     async def get_lineage_run_graph(
         run_id: UUID,
-        forward_depth: int | None = None,
-        backward_depth: int | None = None,
+        forward_depth: int | None = 3,
+        backward_depth: int | None = 3,
     ) -> dict:
         """Retrieve the lineage graph for a run.
 
         Args:
             run_id: The globally unique run identifier.
-            forward_depth: Optional forward traversal depth (downstream).
-            backward_depth: Optional backward traversal depth (upstream).
+            forward_depth: Forward traversal depth (downstream). Defaults to 3.
+            backward_depth: Backward traversal depth (upstream). Defaults to 3.
+                At least one depth parameter must be specified (non-None).
 
         Returns:
             The lineage graph response.
